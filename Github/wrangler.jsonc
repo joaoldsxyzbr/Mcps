@@ -3,9 +3,10 @@
   "name": "mcps-github",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "observability": { "enabled": true },
-  // KV onde o workers-oauth-provider guarda estados do fluxo OAuth e tokens.
+  // KV onde o workers-oauth-provider guarda estados do fluxo OAuth e grants.
   // Criar com: npx wrangler kv namespace create OAUTH_KV
   // e substituir o id abaixo pelo id retornado.
   "kv_namespaces": [
@@ -14,8 +15,9 @@
       "id": "SUBSTITUA_PELO_ID_DO_KV"
     }
   ],
-  // URL pública do worker. Ajustar após o primeiro deploy com o subdomínio real.
+  // URL pública do endpoint MCP (com /mcp). Ajustar após o primeiro deploy
+  // com o subdomínio real da conta.
   "vars": {
-    "MCP_SERVER_URL": "https://mcps-github.SEU-SUBDOMINIO.workers.dev"
+    "MCP_SERVER_URL": "https://mcps-github.SEU-SUBDOMINIO.workers.dev/mcp"
   }
 }
