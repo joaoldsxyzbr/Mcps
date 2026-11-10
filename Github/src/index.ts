@@ -73,10 +73,9 @@ function errorPage(message: string, status: number): Response {
   return new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 }
 
-const defaultHandler = {
-  async fetch(request, env) {
-    const oauth = env.OAUTH_PROVIDER;
-    const url = new URL(request.url);
+async function handleDefault(request: Request, env: Env): Promise<Response> {
+  const oauth = env.OAUTH_PROVIDER;
+  const url = new URL(request.url);
 
     if (url.pathname === '/' && request.method === 'GET') {
       return new Response('mcps-github no ar. Conecte um cliente MCP em /mcp.\n', {
@@ -152,8 +151,9 @@ const defaultHandler = {
     }
 
     return errorPage('Não encontrado.', 404);
-  },
-};
+}
+
+const defaultHandler = { fetch: handleDefault };
 
 async function startGithubLogin(
   oauth: OAuthHelpers,
