@@ -33,7 +33,6 @@ interface Env {
   OAUTH_KV: KVNamespace;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
-  CONSENT_SECRET: string;
   MCP_SERVER_URL: string;
 }
 
@@ -88,11 +87,6 @@ async function handleDefault(request: Request, env: Env): Promise<Response> {
     if (url.pathname === '/authorize') {
       if (request.method === 'GET') {
         const authRequest = await oauth.parseAuthRequest(request);
-        if (
-          await oauth.isConsentRemembered(request, authRequest, { secret: env.CONSENT_SECRET })
-        ) {
-          return startGithubLogin(oauth, authRequest);
-        }
         const consent = await oauth.beginConsent(authRequest);
         const client = await oauth.lookupClient(authRequest.clientId);
         return new Response(
@@ -111,9 +105,7 @@ async function handleDefault(request: Request, env: Env): Promise<Response> {
           const denied = await oauth.denyConsent(request, handle);
           return new Response(null, { status: 302, headers: denied.headers });
         }
-        const approved = await oauth.approveConsent(request, handle, {
-          remember: { secret: env.CONSENT_SECRET },
-        });
+        const approved = await oauth.approveConsent(request, handle);
         return startGithubLogin(oauth, approved.request, approved.headers);
       }
     }
