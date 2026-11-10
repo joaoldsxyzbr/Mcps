@@ -55,7 +55,6 @@ Anote o **App ID** e gere um **client secret**.
 npx wrangler kv namespace create OAUTH_KV   # coloque o id no wrangler.jsonc
 npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
-npx wrangler secret put CONSENT_SECRET      # aleatório, mínimo 32 caracteres
 ```
 
 Ajuste `MCP_SERVER_URL` no `wrangler.jsonc` com o subdomínio real (após o
