@@ -60,12 +60,14 @@ function createServer(props: AuthProps) {
 }
 
 // O OAuthProvider entrega ctx.props (do completeAuthorization) ao apiHandler.
-const apiHandler: ExportedHandler<Env> = {
-  fetch(request, env, ctx: any) {
+// `satisfies` (em vez de anotação) mantém `fetch` obrigatório no tipo inferido,
+// como exige ExportedHandlerWithFetch do OAuthProvider.
+const apiHandler = {
+  fetch(request: Request, env: Env, ctx: any) {
     const mcpHandler = createMcpHandler(() => createServer(ctx.props as AuthProps));
     return mcpHandler(request, env, ctx);
   },
-};
+} satisfies ExportedHandler<Env>;
 
 // --- /authorize, /callback, health ---
 
