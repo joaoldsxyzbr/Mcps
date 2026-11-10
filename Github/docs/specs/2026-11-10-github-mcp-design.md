@@ -24,7 +24,7 @@ OAuth próprio, nada roda na nossa infraestrutura.
 | 6 | `push_files` com múltiplos arquivos num único commit (Git data API) | Um commit por arquivo | Ergonomia: alteração atômica multi-arquivo |
 | 7 | Monorepo: cada pasta do repo `Mcps` = um MCP autônomo com src/test/docs próprios | Um repo por MCP | O repo `Mcps` existe para agrupar os MCPs |
 | 8 | Deploy por CI no GitHub (workflow com `wrangler deploy` + secrets) | Deploy manual | Mesmo padrão dos demais projetos do João |
-| 9 | Testes com vitest, fetch mockado por injeção; API real validada em smoke manual pós-deploy | Testes só contra API real | TDD exige ciclo rápido e determinístico; API real é flaky e custa rate limit |
+| 9 | Testes com node:test (runner nativo do Node), fetch mockado por injeção; API real validada em smoke manual pós-deploy | Testes só contra API real | TDD exige ciclo rápido e determinístico; API real é flaky e custa rate limit |
 
 ## Comportamento esperado
 
