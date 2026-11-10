@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config.schema.json",
-  "name": "mcps-github",
+  "name": "mcps",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -15,9 +15,8 @@
       "id": "SUBSTITUA_PELO_ID_DO_KV"
     }
   ],
-  // URL pública do endpoint MCP (com /mcp). Ajustar após o primeiro deploy
-  // com o subdomínio real da conta.
+  // URL pública do endpoint MCP (com /mcp).
   "vars": {
-    "MCP_SERVER_URL": "https://mcps-github.SEU-SUBDOMINIO.workers.dev/mcp"
+    "MCP_SERVER_URL": "https://mcps.contato-24f.workers.dev/mcp"
   }
 }

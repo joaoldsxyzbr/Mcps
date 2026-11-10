@@ -39,7 +39,7 @@ vários arquivos em um único commit.
 Em github.com → Settings → Developer settings → GitHub Apps → New GitHub App:
 
 - **Homepage URL**: URL do worker.
-- **Callback URL**: `https://mcps-github.<subdominio>.workers.dev/callback`
+- **Callback URL**: `https://mcps.contato-24f.workers.dev/callback`
 - **Expire user authorization tokens**: habilitado (token 8h + refresh).
 - **Repository permissions**:
   - Contents: Read & write
@@ -57,8 +57,7 @@ npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
 ```
 
-Ajuste `MCP_SERVER_URL` no `wrangler.jsonc` com o subdomínio real (após o
-primeiro deploy) — deve terminar em `/mcp`.
+`MCP_SERVER_URL` já está fixado no `wrangler.jsonc` com a URL real.
 
 ### 3. Deploy
 
@@ -72,7 +71,7 @@ Workers Scripts:Edit) e `CLOUDFLARE_ACCOUNT_ID`.
 Num cliente MCP que aceita servidores remotos, conecte em:
 
 ```
-https://mcps-github.<subdominio>.workers.dev/mcp
+https://mcps.contato-24f.workers.dev/mcp
 ```
 
 O cliente segue o fluxo OAuth sozinho: abre o consentimento, você autoriza com
