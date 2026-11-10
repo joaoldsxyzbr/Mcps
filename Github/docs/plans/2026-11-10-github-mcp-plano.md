@@ -57,7 +57,7 @@ Branch: feat/github-mcp-v1
 ### Tarefa 8: CI, README e deploy
 
 - Arquivos: `.github/workflows/deploy-github-mcp.yml`, `Github/README.md`, `Github/wrangler.jsonc` (vars/secrets finais)
-- Mudança: workflow push na main → `npm ci`, typecheck, test, `wrangler deploy` (secrets CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID); README com setup do GitHub App (callback URL, permissões) e uso do MCP.
+- Mudança: workflow push na main → `npm install` (lockfile pendente de geração local), typecheck, test, `wrangler deploy` (secrets CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID); README com setup do GitHub App (callback URL, permissões) e uso do MCP.
 - Verificação: `npx wrangler deploy --dry-run` exit 0; push → CI verde
 - Critério de pronto: CI verde na run do commit final; se o conector bloquear `.github/workflows/`, workflow é criado manualmente pelo João e o bloqueio é reportado
 
