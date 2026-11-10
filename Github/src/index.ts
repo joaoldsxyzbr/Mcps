@@ -43,8 +43,12 @@ interface AuthProps {
   login?: string;
 }
 
+// env de cloudflare:workers é tipado como o Env global do wrangler; o cast
+// alinha com a interface de cima no typecheck.
+const workerEnv = env as unknown as Env;
+
 function callbackUrl(): string {
-  return new URL('/callback', env.MCP_SERVER_URL).toString();
+  return new URL('/callback', workerEnv.MCP_SERVER_URL).toString();
 }
 
 // --- Endpoint MCP ---
@@ -55,9 +59,12 @@ function createServer(props: AuthProps) {
   return server;
 }
 
-const apiHandler: ExportedHandler<Env> = (request, env, ctx: any) => {
-  const mcpHandler = createMcpHandler(() => createServer(ctx.props as AuthProps));
-  return mcpHandler(request, env, ctx);
+// O OAuthProvider entrega ctx.props (do completeAuthorization) ao apiHandler.
+const apiHandler: ExportedHandler<Env> = {
+  fetch(request, env, ctx: any) {
+    const mcpHandler = createMcpHandler(() => createServer(ctx.props as AuthProps));
+    return mcpHandler(request, env, ctx);
+  },
 };
 
 // --- /authorize, /callback, health ---
@@ -66,83 +73,86 @@ function errorPage(message: string, status: number): Response {
   return new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 }
 
-const defaultHandler: ExportedHandler<Env> = async (request, env, ctx) => {
-  const oauth = env.OAUTH_PROVIDER;
-  const url = new URL(request.url);
+const defaultHandler: ExportedHandler<Env> = {
+  async fetch(request, env) {
+    const oauth = env.OAUTH_PROVIDER;
+    const url = new URL(request.url);
 
-  if (url.pathname === '/' && request.method === 'GET') {
-    return new Response('mcps-github no ar. Conecte um cliente MCP em /mcp.\n', {
-      headers: { 'content-type': 'text/plain; charset=utf-8' },
-    });
-  }
-
-  if (url.pathname === '/authorize') {
-    if (request.method === 'GET') {
-      const authRequest = await oauth.parseAuthRequest(request);
-      if (
-        await oauth.isConsentRemembered(request, authRequest, { secret: env.CONSENT_SECRET })
-      ) {
-        return startGithubLogin(oauth, authRequest);
-      }
-      const consent = await oauth.beginConsent(authRequest);
-      const client = await oauth.lookupClient(authRequest.clientId);
-      return new Response(
-        renderConsentPage({
-          clientName: client?.clientName ?? authRequest.clientId,
-          handle: consent.handle,
-          scopes: authRequest.scope,
-        }),
-        { headers: consent.headers },
-      );
-    }
-    if (request.method === 'POST') {
-      const form = await request.formData();
-      const handle = String(form.get('handle'));
-      if (String(form.get('action')) === 'deny') {
-        const denied = await oauth.denyConsent(request, handle);
-        return new Response(null, { status: 302, headers: denied.headers });
-      }
-      const approved = await oauth.approveConsent(request, handle, {
-        remember: { secret: env.CONSENT_SECRET },
+    if (url.pathname === '/' && request.method === 'GET') {
+      return new Response('mcps-github no ar. Conecte um cliente MCP em /mcp.\n', {
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
       });
-      return startGithubLogin(oauth, approved.request, approved.headers);
     }
-  }
 
-  if (url.pathname === '/callback' && request.method === 'GET') {
-    const finished = await oauth.finishUpstream<{ verifier: string }>(request);
-    const code = url.searchParams.get('code');
-    if (!code) {
-      return errorPage('GitHub não devolveu código de autorização.', 400);
+    if (url.pathname === '/authorize') {
+      if (request.method === 'GET') {
+        const authRequest = await oauth.parseAuthRequest(request);
+        if (
+          await oauth.isConsentRemembered(request, authRequest, { secret: env.CONSENT_SECRET })
+        ) {
+          return startGithubLogin(oauth, authRequest);
+        }
+        const consent = await oauth.beginConsent(authRequest);
+        const client = await oauth.lookupClient(authRequest.clientId);
+        return new Response(
+          renderConsentPage({
+            clientName: client?.clientName ?? authRequest.clientId,
+            handle: consent.handle,
+            scopes: authRequest.scope,
+          }),
+          { headers: consent.headers },
+        );
+      }
+      if (request.method === 'POST') {
+        const form = await request.formData();
+        const handle = String(form.get('handle'));
+        if (String(form.get('action')) === 'deny') {
+          const denied = await oauth.denyConsent(request, handle);
+          return new Response(null, { status: 302, headers: denied.headers });
+        }
+        const approved = await oauth.approveConsent(request, handle, {
+          remember: { secret: env.CONSENT_SECRET },
+        });
+        return startGithubLogin(oauth, approved.request, approved.headers);
+      }
     }
-    const exchanged = await exchangeCode({
-      code,
-      codeVerifier: finished.data.verifier,
-      clientId: env.GITHUB_CLIENT_ID,
-      clientSecret: env.GITHUB_CLIENT_SECRET,
-      redirectUri: callbackUrl(),
-    });
-    if (!exchanged.accessToken) {
-      return errorPage('Troca de código com o GitHub falhou. Tente autorizar de novo.', 502);
-    }
-    const user = await getGithubUser(exchanged.accessToken);
-    const { redirectTo } = await oauth.completeAuthorization({
-      request: finished.request,
-      userId: user.id,
-      metadata: {},
-      scope: finished.request.scope,
-      props: {
-        githubToken: exchanged.accessToken,
-        githubRefreshToken: exchanged.refreshToken,
-        login: user.login,
-      },
-    });
-    const headers = finished.headers;
-    headers.set('Location', redirectTo);
-    return new Response(null, { status: 302, headers });
-  }
 
-  return errorPage('Não encontrado.', 404);
+    if (url.pathname === '/callback' && request.method === 'GET') {
+      const finished = await oauth.finishUpstream(request);
+      const data = finished.data as { verifier: string };
+      const code = url.searchParams.get('code');
+      if (!code) {
+        return errorPage('GitHub não devolveu código de autorização.', 400);
+      }
+      const exchanged = await exchangeCode({
+        code,
+        codeVerifier: data.verifier,
+        clientId: env.GITHUB_CLIENT_ID,
+        clientSecret: env.GITHUB_CLIENT_SECRET,
+        redirectUri: callbackUrl(),
+      });
+      if (!exchanged.accessToken) {
+        return errorPage('Troca de código com o GitHub falhou. Tente autorizar de novo.', 502);
+      }
+      const user = await getGithubUser(exchanged.accessToken);
+      const { redirectTo } = await oauth.completeAuthorization({
+        request: finished.request,
+        userId: user.id,
+        metadata: {},
+        scope: finished.request.scope,
+        props: {
+          githubToken: exchanged.accessToken,
+          githubRefreshToken: exchanged.refreshToken,
+          login: user.login,
+        },
+      });
+      const headers = finished.headers;
+      headers.set('Location', redirectTo);
+      return new Response(null, { status: 302, headers });
+    }
+
+    return errorPage('Não encontrado.', 404);
+  },
 };
 
 async function startGithubLogin(
@@ -159,7 +169,7 @@ async function startGithubLogin(
   headers.set(
     'Location',
     githubAuthorizeUrl({
-      clientId: env.GITHUB_CLIENT_ID,
+      clientId: workerEnv.GITHUB_CLIENT_ID,
       redirectUri: callbackUrl(),
       state: upstream.state,
       codeChallenge: await s256(verifier),
@@ -179,8 +189,8 @@ export default new OAuthProvider<Env>({
   scopesSupported: ['github', 'offline_access'],
   requiredScopes: ['github'],
   resourceMetadata: {
-    resource: env.MCP_SERVER_URL,
-    authorization_servers: [env.MCP_SERVER_URL],
+    resource: workerEnv.MCP_SERVER_URL,
+    authorization_servers: [workerEnv.MCP_SERVER_URL],
   },
   clientIdMetadataDocumentEnabled: true,
   tokenExchangeCallback: async ({ grantType, props }: { grantType: string; props: AuthProps }) => {
@@ -190,8 +200,8 @@ export default new OAuthProvider<Env>({
     }
     const result = await refreshGithubToken({
       refreshToken: props.githubRefreshToken,
-      clientId: env.GITHUB_CLIENT_ID,
-      clientSecret: env.GITHUB_CLIENT_SECRET,
+      clientId: workerEnv.GITHUB_CLIENT_ID,
+      clientSecret: workerEnv.GITHUB_CLIENT_SECRET,
     });
     if (!result.ok && result.error === 'bad_refresh_token') {
       throw new OAuthError('invalid_grant', { description: 'Acesso GitHub revogado.' });
