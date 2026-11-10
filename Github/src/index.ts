@@ -73,7 +73,7 @@ function errorPage(message: string, status: number): Response {
   return new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 }
 
-const defaultHandler: ExportedHandler<Env> = {
+const defaultHandler = {
   async fetch(request, env) {
     const oauth = env.OAUTH_PROVIDER;
     const url = new URL(request.url);
