@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defineMcps } from '../src/mcps.ts';
+import { defineMcps, mcpHandlerRoute } from '../src/mcps.ts';
 
 const ISSUER = 'https://mcps.example.dev';
 
@@ -38,4 +38,13 @@ test('github está registrado em /github/mcp', () => {
   assert.ok(github);
   assert.equal(github.path, '/github/mcp');
   assert.equal(github.resource, `${ISSUER}/github/mcp`);
+});
+
+test('handler MCP serve o path do MCP, não o default /mcp', () => {
+  // createMcpHandler devolve 404 quando o pathname difere de `route`; com o
+  // default `/mcp`, /github/mcp conectava sem expor ferramenta nenhuma.
+  for (const mcp of defineMcps(ISSUER)) {
+    assert.equal(mcpHandlerRoute(mcp), mcp.path);
+    assert.notEqual(mcpHandlerRoute(mcp), '/mcp');
+  }
 });

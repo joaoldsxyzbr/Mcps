@@ -46,3 +46,15 @@ export function defineMcps(issuer: string): McpDefinition[] {
     // },
   ];
 }
+
+/**
+ * Pathname que o handler MCP deve servir.
+ *
+ * `createMcpHandler` (de `agents/mcp/server`) só responde no pathname exato de
+ * `route`, e o default é `/mcp`. Como cada MCP vive num path próprio
+ * (`/github/mcp`), o route precisa ser o path do MCP: sem isso o handler
+ * devolve 404 e o cliente conecta sem enxergar ferramenta nenhuma.
+ */
+export function mcpHandlerRoute(mcp: McpDefinition): string {
+  return mcp.path;
+}

@@ -26,7 +26,7 @@ import {
   type AuthEnv,
   type AuthProps,
 } from './auth/flow.ts';
-import { defineMcps, type McpDefinition } from './mcps.ts';
+import { defineMcps, mcpHandlerRoute, type McpDefinition } from './mcps.ts';
 import { resolveRoute } from './routes.ts';
 
 interface Env extends AuthEnv {
@@ -102,7 +102,9 @@ function createRouter(env: Env): Router {
         authorizationServer.validateToken<AuthProps>(resource, token, env),
       handler: {
         fetch(request, _env, ctx) {
-          const handler = createMcpHandler(() => mcp.createServer(ctx.props));
+          const handler = createMcpHandler(() => mcp.createServer(ctx.props), {
+            route: mcpHandlerRoute(mcp),
+          });
           return handler(request, _env, ctx);
         },
       },
