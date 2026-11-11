@@ -1,1 +1,2 @@
 linha 1: smoke test do worker github-mcp
+linha 2: edit_file funcionou
