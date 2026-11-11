@@ -52,6 +52,24 @@ test('/authorize GET renderiza consentimento com o nome do cliente', async () =>
   assert.ok(html.includes('name="handle" value="h-1"'));
 });
 
+test('/authorize GET devolve HTML renderizável e preserva o cookie de binding', async () => {
+  const { helpers } = fakeOAuth({
+    async beginConsent() {
+      const headers = new Headers();
+      headers.append('Set-Cookie', '__Host-oauth-consent-abc=abc; Path=/; Secure; HttpOnly');
+      return { handle: 'h-1', headers };
+    },
+  });
+  const response = await handleAuthorize(
+    new Request('https://mcps.example.dev/authorize'),
+    env,
+    helpers,
+  );
+  // Sem text/html o navegador exibe o código-fonte em vez da página.
+  assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
+  assert.match(response.headers.get('set-cookie') ?? '', /__Host-oauth-consent-abc/);
+});
+
 test('/authorize POST deny redireciona sem tocar no GitHub', async () => {
   const { helpers, calls } = fakeOAuth({
     async denyConsent() {

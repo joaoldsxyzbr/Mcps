@@ -49,7 +49,14 @@ before(async () => {
 });
 
 after(() => {
-  server?.kill();
+  if (!server?.pid) return;
+  // No Windows `server.kill()` mata só o shell do `npx`; o workerd fica
+  // órfão segurando a porta e a próxima execução falha. taskkill /T mata a árvore.
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
+  } else {
+    server.kill();
+  }
 });
 
 test('/ responde health listando os MCPs', async () => {
@@ -138,6 +145,10 @@ test('cliente registrado chega ao consentimento com PKCE', async () => {
 
   const response = await fetch(authorize);
   assert.equal(response.status, 200);
+  // Sem text/html o navegador mostra o HTML como texto e não há como clicar.
+  assert.match(response.headers.get('content-type') ?? '', /^text\/html/);
+  // O cookie que amarra o handle a este navegador precisa chegar ao cliente.
+  assert.match(response.headers.get('set-cookie') ?? '', /__Host-oauth-consent-/);
   const html = await response.text();
   assert.match(html, /Vibe PKCE/);
   assert.match(html, /name="handle"/);

@@ -44,7 +44,7 @@ export async function handleAuthorize(
     const authRequest = await oauth.parseAuthRequest(request);
     const consent = await oauth.beginConsent(authRequest);
     const client = await oauth.lookupClient(authRequest.clientId);
-    return new Response(
+    const response = new Response(
       renderConsentPage({
         clientName: client?.clientName ?? authRequest.clientId,
         handle: consent.handle,
@@ -52,6 +52,11 @@ export async function handleAuthorize(
       }),
       { headers: consent.headers },
     );
+    // `consent.headers` só traz cookie e cabeçalhos de segurança. Sem o
+    // content-type explícito o runtime assume text/plain e o navegador
+    // mostra o HTML como texto — a página aparece sem botões.
+    response.headers.set('content-type', 'text/html; charset=utf-8');
+    return response;
   }
 
   const form = await request.formData();
