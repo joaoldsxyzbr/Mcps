@@ -14,6 +14,9 @@ import {
   search_pull_requests,
   create_pull_request,
   merge_pull_request,
+  list_branches,
+  list_tags,
+  list_releases,
 } from '../src/tools/handlers/rest.ts';
 
 function fakeClient() {
@@ -158,4 +161,33 @@ test('merge_pull_request faz merge com método', async () => {
   assert.equal(calls[0].path, '/repos/o/r/pulls/9/merge');
   assert.equal(calls[0].method, 'PUT');
   assert.deepEqual(calls[0].body, { merge_method: 'squash', commit_title: 'vai' });
+});
+
+test('list_branches devolve nome, sha e proteção', async () => {
+  const f = fakeClient();
+  f.respond(() => ([{ name: 'main', commit: { sha: 'abc' }, protected: true }]));
+  const out = await list_branches(f.client, { owner: 'o', repo: 'r' });
+  assert.equal(f.calls[0].path, '/repos/o/r/branches');
+  assert.deepEqual(out, [{ name: 'main', sha: 'abc', protected: true }]);
+});
+
+test('list_tags devolve nome e sha', async () => {
+  const f = fakeClient();
+  f.respond(() => ([{ name: 'v1.0.0', commit: { sha: 'def' } }]));
+  const out = await list_tags(f.client, { owner: 'o', repo: 'r' });
+  assert.equal(f.calls[0].path, '/repos/o/r/tags');
+  assert.deepEqual(out, [{ name: 'v1.0.0', sha: 'def' }]);
+});
+
+test('list_releases devolve tag, rascunho e prerelease', async () => {
+  const f = fakeClient();
+  f.respond(() => ([{
+    tag_name: 'v1.0.0', name: 'Release 1', draft: false, prerelease: true,
+    published_at: '2026-01-01', html_url: 'u',
+  }]));
+  const out = await list_releases(f.client, { owner: 'o', repo: 'r', perPage: 5 });
+  assert.equal(f.calls[0].path, '/repos/o/r/releases');
+  assert.equal(f.calls[0].query.per_page, 5);
+  assert.equal(out[0].tag_name, 'v1.0.0');
+  assert.equal(out[0].prerelease, true);
 });

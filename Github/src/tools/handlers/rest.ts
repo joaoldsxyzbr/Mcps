@@ -16,6 +16,50 @@ function clean<T extends Record<string, any>>(obj: T): T {
 
 // --- Repos ---
 
+export async function list_branches(client: GitHubClient, args: {
+  owner: string; repo: string; page?: number; perPage?: number;
+}) {
+  const data = await client.get<any>(`/repos/${args.owner}/${args.repo}/branches`, {
+    page: args.page,
+    per_page: args.perPage,
+  });
+  return (Array.isArray(data) ? data : []).map((b: any) => ({
+    name: b.name,
+    sha: b.commit?.sha,
+    protected: b.protected ?? false,
+  }));
+}
+
+export async function list_tags(client: GitHubClient, args: {
+  owner: string; repo: string; page?: number; perPage?: number;
+}) {
+  const data = await client.get<any>(`/repos/${args.owner}/${args.repo}/tags`, {
+    page: args.page,
+    per_page: args.perPage,
+  });
+  return (Array.isArray(data) ? data : []).map((t: any) => ({
+    name: t.name,
+    sha: t.commit?.sha,
+  }));
+}
+
+export async function list_releases(client: GitHubClient, args: {
+  owner: string; repo: string; page?: number; perPage?: number;
+}) {
+  const data = await client.get<any>(`/repos/${args.owner}/${args.repo}/releases`, {
+    page: args.page,
+    per_page: args.perPage,
+  });
+  return (Array.isArray(data) ? data : []).map((r: any) => ({
+    tag_name: r.tag_name,
+    name: r.name,
+    draft: r.draft ?? false,
+    prerelease: r.prerelease ?? false,
+    published_at: r.published_at,
+    html_url: r.html_url,
+  }));
+}
+
 export async function search_repositories(client: GitHubClient, args: {
   query: string; page?: number; perPage?: number; sort?: string; order?: string;
 }) {

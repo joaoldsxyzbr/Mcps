@@ -41,12 +41,12 @@ export class GitHubClient {
     return url.toString();
   }
 
-  private async request<T = any>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
+  private async request<T = any>(method: string, path: string, body?: unknown, query?: Query, accept?: string): Promise<T> {
     const init: RequestInit = {
       method,
       headers: {
         authorization: `Bearer ${this.token}`,
-        accept: 'application/vnd.github+json',
+        accept: accept ?? 'application/vnd.github+json',
         'x-github-api-version': '2022-11-28',
         'user-agent': 'mcps-github',
       },
@@ -77,8 +77,34 @@ export class GitHubClient {
     return data as T;
   }
 
-  get<T = any>(path: string, query?: Query): Promise<T> {
-    return this.request<T>('GET', path, undefined, query);
+  get<T = any>(path: string, query?: Query, accept?: string): Promise<T> {
+    return this.request<T>('GET', path, undefined, query, accept);
+  }
+
+  /**
+   * GET que devolve o `Response` cru, sem parse de JSON. Necessário para
+   * endpoints que respondem texto ou binário (ex.: logs de Actions).
+   */
+  async getRaw(path: string, query?: Query, accept?: string): Promise<Response> {
+    const response = await this.fetchFn(this.buildUrl(path, query), {
+      method: 'GET',
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        accept: accept ?? 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'mcps-github',
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      const remaining = response.headers.get('x-ratelimit-remaining');
+      throw new GitHubError(
+        response.status,
+        text || `HTTP ${response.status}`,
+        remaining !== null ? Number(remaining) : undefined,
+      );
+    }
+    return response;
   }
 
   post<T = any>(path: string, body?: unknown): Promise<T> {
@@ -91,5 +117,9 @@ export class GitHubClient {
 
   patch<T = any>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, body);
+  }
+
+  delete<T = any>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('DELETE', path, body);
   }
 }

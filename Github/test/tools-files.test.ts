@@ -6,6 +6,7 @@ import {
   create_or_update_file,
   edit_file,
   push_files,
+  delete_file,
 } from '../src/tools/handlers/files.ts';
 import { EditError } from '../src/github/edit.ts';
 
@@ -28,6 +29,10 @@ function fakeClient(responses: Array<{ match: (method: string, path: string) => 
     async patch(path: string, body?: any) {
       calls.push({ method: 'PATCH', path, body });
       return respond('PATCH', path);
+    },
+    async delete(path: string, body?: any) {
+      calls.push({ method: 'DELETE', path, body });
+      return respond('DELETE', path);
     },
   };
   function respond(method: string, path: string) {
@@ -136,6 +141,7 @@ test('push_files faz 4 chamadas: ref, tree, commit, update ref', async () => {
     files: [{ path: 'a.txt', content: 'A' }, { path: 'b.txt', content: 'B' }],
   });
   assert.equal(out.sha, 'commitsha');
+  assert.equal(out.attempts, 1);
   assert.equal(calls.length, 4);
   assert.deepEqual(calls.map((c) => c.method), ['GET', 'POST', 'POST', 'PATCH']);
   const tree = calls[1].body;
@@ -146,4 +152,90 @@ test('push_files faz 4 chamadas: ref, tree, commit, update ref', async () => {
   assert.equal(commit.tree, 'treesha');
   assert.deepEqual(commit.parents, ['refsha']);
   assert.equal(calls[3].body.sha, 'commitsha');
+  // Nunca força: é o que impede sobrescrever trabalho de outro.
+  assert.equal(calls[3].body.force, false);
+});
+
+test('push_files com expectedHeadSha divergente falha sem escrever', async () => {
+  const { client, calls } = fakeClient([{
+    match: (m, p) => m === 'GET' && p === '/repos/o/r/git/ref/heads/main',
+    data: { object: { sha: 'atual' } },
+  }]);
+  await assert.rejects(
+    () => push_files(client, {
+      owner: 'o', repo: 'r', branch: 'main', message: 'm',
+      files: [{ path: 'a.txt', content: 'A' }],
+      expectedHeadSha: 'esperado',
+    }),
+    (e: any) => e.code === 'PUSH_CONFLICT' && e.expected === 'esperado' && e.actual === 'atual',
+  );
+  assert.equal(calls.length, 1); // só o GET, nada foi escrito
+});
+
+test('push_files retenta quando a branch andou entre leitura e escrita', async () => {
+  let patchAttempts = 0;
+  const calls: Array<{ method: string }> = [];
+  const client: any = {
+    async get() {
+      calls.push({ method: 'GET' });
+      return { object: { sha: calls.filter((c) => c.method === 'GET').length === 1 ? 'sha1' : 'sha2' } };
+    },
+    async post(path: string) {
+      calls.push({ method: 'POST' });
+      return { sha: path.endsWith('/trees') ? 'tree' : 'commit' };
+    },
+    async patch() {
+      calls.push({ method: 'PATCH' });
+      patchAttempts++;
+      if (patchAttempts === 1) {
+        const err: any = new Error('not a fast forward');
+        err.status = 422;
+        throw err;
+      }
+      return {};
+    },
+  };
+  const out = await push_files(client, {
+    owner: 'o', repo: 'r', branch: 'main', message: 'm',
+    files: [{ path: 'a.txt', content: 'A' }],
+  });
+  assert.equal(out.attempts, 2);
+  assert.equal(patchAttempts, 2);
+});
+
+test('push_files desiste após maxRetries', async () => {
+  const client: any = {
+    async get() { return { object: { sha: 'sha' } }; },
+    async post(path: string) { return { sha: path.endsWith('/trees') ? 'tree' : 'commit' }; },
+    async patch() {
+      const err: any = new Error('conflict');
+      err.status = 409;
+      throw err;
+    },
+  };
+  await assert.rejects(
+    () => push_files(client, {
+      owner: 'o', repo: 'r', branch: 'main', message: 'm',
+      files: [{ path: 'a.txt', content: 'A' }],
+      maxRetries: 2,
+    }),
+    (e: any) => e.code === 'PUSH_CONFLICT',
+  );
+});
+
+test('delete_file lê o sha quando não informado e apaga', async () => {
+  const { client, calls } = fakeClient([{
+    match: (m, p) => m === 'GET' && p === '/repos/o/r/contents/x.txt',
+    data: { type: 'file', sha: 'sha-atual' },
+  }, {
+    match: (m, p) => m === 'DELETE' && p === '/repos/o/r/contents/x.txt',
+    data: { commit: { sha: 'c1', html_url: 'u' } },
+  }]);
+  const out = await delete_file(client, {
+    owner: 'o', repo: 'r', branch: 'main', path: 'x.txt', message: 'remove',
+  });
+  assert.equal(out.deleted, 'x.txt');
+  assert.equal(out.commit.sha, 'c1');
+  assert.equal(calls[1].body.sha, 'sha-atual');
+  assert.equal(calls[1].body.branch, 'main');
 });

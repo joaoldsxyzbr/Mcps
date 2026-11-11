@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config.schema.json",
+  "name": "mcps",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // KV onde o workers-oauth-provider guarda estados do fluxo OAuth, clientes
+  // registrados (DCR), grants e tokens (só hashes). O código escreve sozinho;
+  // nada é registrado à mão.
+  // Criar com: npx wrangler kv namespace create OAUTH_KV
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "34793fe123bf4dc78202548b5c54df92"
+    }
+  ],
+  // Origem do Worker: issuer OAuth e base das URLs dos resources (cada MCP
+  // é um resource próprio, com audience própria).
+  "vars": {
+    "AUTH_ISSUER": "https://mcps.contato-24f.workers.dev"
+  }
+}

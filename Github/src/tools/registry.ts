@@ -7,13 +7,19 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { GitHubClient } from '../github/client.ts';
 import {
-  get_me, get_file_contents, create_or_update_file, edit_file, push_files,
+  get_me, get_file_contents, create_or_update_file, edit_file, push_files, delete_file,
 } from './handlers/files.ts';
 import {
   search_repositories, get_repository_tree, create_branch, list_commits, get_commit,
   list_issues, search_issues, issue_write, add_issue_comment,
   list_pull_requests, search_pull_requests, create_pull_request, merge_pull_request,
+  list_branches, list_tags, list_releases,
 } from './handlers/rest.ts';
+import { search_code, search_commits } from './handlers/search.ts';
+import {
+  list_check_runs, get_commit_status, list_workflow_runs, get_workflow_run_logs,
+} from './handlers/ci.ts';
+import { pull_request_read, pull_request_review, pull_request_comment, update_pull_request, update_pull_request_branch } from './handlers/pulls.ts';
 
 function textResult(data: unknown, isError = false) {
   return {
@@ -69,11 +75,13 @@ export function registerTools(server: McpServer, client: GitHubClient): void {
     run(() => get_repository_tree(client, { owner, repo, ref })));
 
   server.registerTool('get_file_contents', {
-    description: 'Conteúdo de arquivo (decodificado) ou listagem de diretório',
+    description: 'Conteúdo de arquivo (decodificado) ou listagem de diretório; use startLine/endLine para ler só um trecho',
     inputSchema: {
       owner: z.string(), repo: z.string(), path: z.string().optional(),
       ref: z.string().optional(),
       fields: z.array(z.enum(['name', 'path', 'type', 'sha', 'size', 'html_url'])).optional(),
+      startLine: z.number().int().positive().optional(),
+      endLine: z.number().int().positive().optional(),
     },
   }, (args) => run(() => get_file_contents(client, args)));
 
@@ -95,12 +103,46 @@ export function registerTools(server: McpServer, client: GitHubClient): void {
   }, (args) => run(() => edit_file(client, args)));
 
   server.registerTool('push_files', {
-    description: 'Envia múltiplos arquivos em um único commit',
+    description: 'Envia múltiplos arquivos em um único commit; nunca sobrescreve commits de outros (force=false + retry)',
     inputSchema: {
       owner: z.string(), repo: z.string(), branch: z.string(), message: z.string(),
       files: z.array(z.object({ path: z.string(), content: z.string() })).min(1),
+      expectedHeadSha: z.string().optional(),
+      maxRetries: z.number().int().min(0).max(10).optional(),
     },
   }, (args) => run(() => push_files(client, args)));
+
+  server.registerTool('delete_file', {
+    description: 'Apaga um arquivo com commit; exige o sha atual quando o arquivo existe',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), branch: z.string(),
+      path: z.string(), message: z.string(), sha: z.string().optional(),
+    },
+  }, (args) => run(() => delete_file(client, args)));
+
+  server.registerTool('list_branches', {
+    description: 'Lista as branches do repositório',
+    inputSchema: {
+      owner: z.string(), repo: z.string(),
+      page: z.number().int().optional(), perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => list_branches(client, args)));
+
+  server.registerTool('list_tags', {
+    description: 'Lista as tags do repositório',
+    inputSchema: {
+      owner: z.string(), repo: z.string(),
+      page: z.number().int().optional(), perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => list_tags(client, args)));
+
+  server.registerTool('list_releases', {
+    description: 'Lista as releases do repositório',
+    inputSchema: {
+      owner: z.string(), repo: z.string(),
+      page: z.number().int().optional(), perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => list_releases(client, args)));
 
   server.registerTool('create_branch', {
     description: 'Cria uma branch a partir da main ou de um sha',
@@ -195,4 +237,112 @@ export function registerTools(server: McpServer, client: GitHubClient): void {
       commitTitle: z.string().optional(), commitMessage: z.string().optional(),
     },
   }, (args) => run(() => merge_pull_request(client, args)));
+
+  // --- Busca ---
+
+  server.registerTool('search_code', {
+    description: 'Busca dentro do código (termo, language:, path:, filename:); devolve arquivo e trechos com o termo',
+    inputSchema: {
+      query: z.string(), repo: z.string().optional(),
+      page: z.number().int().optional(), perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => search_code(client, args)));
+
+  server.registerTool('search_commits', {
+    description: 'Busca em mensagens de commit',
+    inputSchema: {
+      query: z.string(), repo: z.string().optional(),
+      page: z.number().int().optional(), perPage: z.number().int().optional(),
+      sort: z.enum(['author-date', 'committer-date']).optional(),
+      order: z.enum(['asc', 'desc']).optional(),
+    },
+  }, (args) => run(() => search_commits(client, args)));
+
+  // --- CI ---
+
+  server.registerTool('list_check_runs', {
+    description: 'Check runs de um commit, branch ou tag, com resumo de aprovado/falhou/pendente',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), ref: z.string(),
+      filter: z.enum(['latest', 'all']).optional(),
+      perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => list_check_runs(client, args)));
+
+  server.registerTool('get_commit_status', {
+    description: 'Status combinado de um commit (checks legados de bots)',
+    inputSchema: { owner: z.string(), repo: z.string(), ref: z.string() },
+  }, (args) => run(() => get_commit_status(client, args)));
+
+  server.registerTool('list_workflow_runs', {
+    description: 'Execuções de GitHub Actions, mais recentes primeiro',
+    inputSchema: {
+      owner: z.string(), repo: z.string(),
+      branch: z.string().optional(),
+      status: z.enum([
+        'completed', 'action_required', 'cancelled', 'failure', 'neutral', 'skipped',
+        'stale', 'success', 'timed_out', 'in_progress', 'queued', 'requested', 'waiting',
+      ]).optional(),
+      perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => list_workflow_runs(client, args)));
+
+  server.registerTool('get_workflow_run_logs', {
+    description: 'Log de uma execução de Actions (últimas linhas por padrão)',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), runId: z.number().int(),
+      tailLines: z.number().int().positive().optional(),
+    },
+  }, (args) => run(() => get_workflow_run_logs(client, args)));
+
+  // --- Pull request: leitura e review ---
+
+  server.registerTool('pull_request_read', {
+    description: 'Lê um PR: detalhes, diff, arquivos, commits, reviews ou comentários',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), number: z.number().int(),
+      method: z.enum([
+        'get', 'get_diff', 'get_files', 'get_commits',
+        'get_reviews', 'get_comments', 'get_review_comments',
+      ]),
+      page: z.number().int().optional(), perPage: z.number().int().optional(),
+    },
+  }, (args) => run(() => pull_request_read(client, args)));
+
+  server.registerTool('pull_request_review', {
+    description: 'Submete review: aprovar, pedir mudanças ou comentar',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), number: z.number().int(),
+      event: z.enum(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']),
+      body: z.string().optional(),
+    },
+  }, (args) => run(() => pull_request_review(client, args)));
+
+  server.registerTool('pull_request_comment', {
+    description: 'Comentário em linha específica do diff de um PR',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), number: z.number().int(),
+      body: z.string(), commitId: z.string(), path: z.string(), line: z.number().int(),
+      side: z.enum(['LEFT', 'RIGHT']).optional(),
+    },
+  }, (args) => run(() => pull_request_comment(client, args)));
+
+  server.registerTool('update_pull_request', {
+    description: 'Edita título, corpo, estado (open/closed) ou base de um PR',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), number: z.number().int(),
+      title: z.string().optional(), body: z.string().optional(),
+      state: z.enum(['open', 'closed']).optional(),
+      base: z.string().optional(),
+      maintainerCanModify: z.boolean().optional(),
+    },
+  }, (args) => run(() => update_pull_request(client, args)));
+
+  server.registerTool('update_pull_request_branch', {
+    description: 'Atualiza a branch do PR com a base; aceita expectedHeadSha para não aplicar sobre estado inesperado',
+    inputSchema: {
+      owner: z.string(), repo: z.string(), number: z.number().int(),
+      expectedHeadSha: z.string().optional(),
+    },
+  }, (args) => run(() => update_pull_request_branch(client, args)));
 }

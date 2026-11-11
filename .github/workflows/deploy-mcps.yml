@@ -1,14 +1,20 @@
-name: deploy-github-mcp
+name: deploy-mcps
 
 on:
   push:
     branches: [main]
-    paths: ['Github/**', '.github/workflows/deploy-github-mcp.yml']
+    paths:
+      - 'worker/**'
+      - 'Github/**'
+      - '.github/workflows/deploy-mcps.yml'
   pull_request:
-    paths: ['Github/**']
+    paths:
+      - 'worker/**'
+      - 'Github/**'
 
 jobs:
-  check-and-deploy:
+  github-mcp:
+    name: Github (domínio)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -19,8 +25,22 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run typecheck
-      - run: npm test
+      - run: npm run check
+
+  worker:
+    name: Worker (auth + MCPs)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run check
+      - run: npm run test:integration
       - name: Deploy para o Cloudflare
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: npx wrangler deploy

@@ -1,94 +1,79 @@
 # mcps-github
 
-MCP server do GitHub rodando em Cloudflare Worker: OAuth oficial via GitHub App
-(token de usuário com expiração e refresh), protocolo MCP 2026-07-28
-(stateless, Streamable HTTP) e ferramentas focadas no uso real, incluindo
-edição inline de arquivos.
+MCP server do GitHub: OAuth oficial via GitHub App (token de usuário com
+expiração e refresh), protocolo MCP 2026-07-28 (stateless, Streamable HTTP) e
+ferramentas focadas no uso real, incluindo edição inline de arquivos.
 
-## Arquitetura
+Este projeto é o **domínio** GitHub do monorepo. O Worker que hospeda e
+autentica fica em `../worker/`; aqui vivem só as ferramentas e o cliente REST.
 
-Um único Worker é o authorization server e o resource server
-(`@cloudflare/workers-oauth-provider`):
+## Estrutura
 
-1. Cliente MCP chega sem token em `/mcp` → `401` com discovery.
-2. Cliente abre `/authorize` → página de consentimento.
-3. Login com o GitHub App → `/callback` troca o código por token de usuário
-   (8h + refresh) → `completeAuthorization` guarda o token em props
-   criptografadas.
-4. Cliente recebe token MCP e chama as ferramentas; cada chamada usa o token
-   GitHub do usuário contra a REST API v3.
-5. Quando o cliente renova o token MCP (`refresh_token`), o
-   `tokenExchangeCallback` renova o token GitHub junto.
+- `src/github/` — cliente REST e motor de edição (puros, testados)
+- `src/tools/handlers/` — ferramentas puras
+- `src/tools/registry.ts` — schemas zod + registro
+- `src/mcp.ts` — adaptador: `createGithubServer(props)` → `McpServer`
+- `src/index.ts` — shim de compatibilidade (reexporta `src/mcp.ts`)
 
-## Ferramentas (v1)
+Nada aqui importa OAuth: o Worker injeta `props.githubToken` no adaptador.
 
-`get_me` · `search_repositories` · `get_repository_tree` · `get_file_contents`
-· `create_or_update_file` · `edit_file` · `push_files` · `create_branch`
-· `list_commits` · `get_commit` · `list_issues` · `search_issues` · `issue_write`
-· `add_issue_comment` · `list_pull_requests` · `search_pull_requests`
-· `create_pull_request` · `merge_pull_request`
+## Ferramentas (v4)
 
-`edit_file` aplica substituições `oldString`/`newString` (lote sequencial,
-ocorrência única ou `replaceAll`) sem reescrever o arquivo. `push_files` envia
-vários arquivos em um único commit.
+**Arquivos e identidade**
+`get_me` · `get_file_contents` · `create_or_update_file` · `edit_file` · `push_files`
+· `delete_file`
 
-## Setup
+**Repos e git**
+`search_repositories` · `get_repository_tree` · `create_branch` · `list_branches`
+· `list_commits` · `get_commit` · `list_tags` · `list_releases`
 
-### 1. GitHub App
+**Busca**
+`search_code` · `search_commits`
 
-Em github.com → Settings → Developer settings → GitHub Apps → New GitHub App:
+**CI**
+`list_check_runs` · `get_commit_status` · `list_workflow_runs` · `get_workflow_run_logs`
 
-- **Homepage URL**: URL do worker.
-- **Callback URL**: `https://mcps.contato-24f.workers.dev/callback`
-- **Expire user authorization tokens**: habilitado (token 8h + refresh).
-- **Repository permissions**:
-  - Contents: Read & write
-  - Issues: Read & write
-  - Pull requests: Read & write
-  - Metadata: Read-only
+**Issues**
+`list_issues` · `search_issues` · `issue_write` · `add_issue_comment`
 
-Anote o **App ID** e gere um **client secret**.
+**Pull requests**
+`list_pull_requests` · `search_pull_requests` · `create_pull_request` · `merge_pull_request`
+· `pull_request_read` · `pull_request_review` · `pull_request_comment`
+· `update_pull_request` · `update_pull_request_branch`
 
-### 2. KV e secrets
+### Destaques
 
-```sh
-npx wrangler kv namespace create OAUTH_KV   # coloque o id no wrangler.jsonc
-npx wrangler secret put GITHUB_CLIENT_ID
-npx wrangler secret put GITHUB_CLIENT_SECRET
-```
-
-`MCP_SERVER_URL` já está fixado no `wrangler.jsonc` com a URL real.
-
-### 3. Deploy
-
-CI no repositório (`.github/workflows/deploy-github-mcp.yml`) instala,
-typecheca, testa e publica com `wrangler deploy` a cada push na `main`.
-Segredos necessários no repositório: `CLOUDFLARE_API_TOKEN` (permissão
-Workers Scripts:Edit) e `CLOUDFLARE_ACCOUNT_ID`.
+- **`edit_file`** aplica `oldString`/`newString` (lote sequencial, ocorrência
+  única ou `replaceAll`) sem o modelo reescrever o arquivo. A API do GitHub não
+  tem edição parcial, então o arquivo trafega inteiro na rede — mas o modelo só
+  vê os trechos que enviou.
+- **`get_file_contents` com `startLine`/`endLine`** lê só um trecho e devolve
+  `totalLines`/`truncated`, evitando puxar 5.000 linhas para ver 20.
+- **`search_code`** acha arquivo e trechos com o termo, sem baixar o repo.
+- **`list_check_runs`** devolve um `summary` (`success`/`failure`/`pending`/
+  `all_passed`), então o modelo sabe se o CI passou antes de mergear.
+- **`pull_request_read`** cobre detalhes, diff, arquivos, commits, reviews e
+  comentários; `pull_request_review` aprova/pede mudanças; `pull_request_comment`
+  comenta em linha do diff; `update_pull_request` edita título/corpo/estado/base;
+  `update_pull_request_branch` sincroniza o PR com a base.
+- **`push_files`** envia vários arquivos em um único commit e **nunca sobrescreve
+  trabalho alheio**: o update da ref usa `force: false`, então o GitHub rejeita
+  se não for fast-forward; nesse caso a operação relê a branch e refaz o commit
+  (até `maxRetries`, padrão 3). Com `expectedHeadSha`, falha em vez de retentar.
 
 ## Uso
 
-Num cliente MCP que aceita servidores remotos, conecte em:
+Conecte um cliente MCP em:
 
 ```
-https://mcps.contato-24f.workers.dev/mcp
+https://mcps.contato-24f.workers.dev/github/mcp
 ```
 
-O cliente segue o fluxo OAuth sozinho: abre o consentimento, você autoriza com
-o GitHub e as ferramentas passam a agir em nome da sua conta.
+Setup do GitHub App, KV e secrets: veja o `README.md` da raiz.
 
 ## Desenvolvimento
 
 ```sh
 npm install
 npm run check     # typecheck + testes (node:test)
-npm run dev       # wrangler dev
 ```
-
-Estrutura: `src/github/` (client REST e motor de edição, puros e testados),
-`src/tools/handlers/` (ferramentas puras), `src/tools/registry.ts` (schemas
-zod + registro), `src/auth/` (fluxo GitHub App e consentimento),
-`src/index.ts` (OAuthProvider + endpoint MCP).
-
-Documentação de decisões em `docs/specs/` e plano em `docs/plans/`.
-Vocabulário do projeto no `GLOSSARY.md`.
