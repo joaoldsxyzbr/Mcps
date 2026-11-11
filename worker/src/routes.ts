@@ -4,38 +4,34 @@
  * não há duas cópias da regra para divergir.
  */
 
-import type { McpDefinition } from './mcps.ts';
+import { MCP_PATH } from './config.ts';
 
 export type Route =
   | { kind: 'authorize' }
   | { kind: 'callback' }
-  | { kind: 'mcp'; mcp: McpDefinition }
+  | { kind: 'mcp' }
   | { kind: 'oauth' }
   | { kind: 'health' }
   | { kind: 'notFound' };
 
+/** `true` para o caminho do MCP e seus subcaminhos. */
+function isMcpPath(pathname: string): boolean {
+  return pathname === MCP_PATH || pathname.startsWith(`${MCP_PATH}/`);
+}
+
 /** Resolve a rota a partir do caminho e do método HTTP. */
-export function resolveRoute(
-  pathname: string,
-  method: string,
-  mcps: McpDefinition[],
-): Route {
+export function resolveRoute(pathname: string, method: string): Route {
   if (pathname === '/authorize') return { kind: 'authorize' };
   if (pathname === '/callback' && method === 'GET') return { kind: 'callback' };
 
-  for (const mcp of mcps) {
-    if (pathname === mcp.path || pathname.startsWith(`${mcp.path}/`)) {
-      return { kind: 'mcp', mcp };
-    }
-  }
+  if (isMcpPath(pathname)) return { kind: 'mcp' };
 
   // Metadata do protected resource: `/.well-known/oauth-protected-resource<path>`.
-  // Precisa chegar no resource server dono do caminho, não no auth server.
+  // Precisa chegar no resource server, não no auth server.
   const protectedPrefix = '/.well-known/oauth-protected-resource';
   if (pathname.startsWith(protectedPrefix)) {
     const suffix = pathname.slice(protectedPrefix.length);
-    const owner = mcps.find((m) => suffix === m.path || suffix.startsWith(`${m.path}/`));
-    if (owner) return { kind: 'mcp', mcp: owner };
+    if (isMcpPath(suffix)) return { kind: 'mcp' };
   }
 
   if (

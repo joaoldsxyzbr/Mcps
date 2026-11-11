@@ -11,14 +11,7 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "forceConsistentCasingInFileNames": true,
-    // O Worker importa os adaptadores MCP dos projetos de domínio
-    // (`../Github/src/mcp.ts`). Esses projetos têm node_modules próprios,
-    // então as dependências compartilhadas são resolvidas por aqui.
-    "paths": {
-      "@modelcontextprotocol/server": ["./node_modules/@modelcontextprotocol/server"],
-      "zod": ["./node_modules/zod"]
-    }
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*", "test/**/*", "../Github/src/**/*"]
 }
