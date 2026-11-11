@@ -1,4 +1,7 @@
-name: deploy-mcps
+# Testes/typecheck dos dois projetos. O deploy em produção é feito pelo
+# Workers Builds (dashboard Cloudflare), que escuta pushes na main — não há
+# deploy aqui, então não precisa de CLOUDFLARE_API_TOKEN no repo.
+name: check-mcps
 
 on:
   push:
@@ -41,9 +44,3 @@ jobs:
       - run: npm install
       - run: npm run check
       - run: npm run test:integration
-      - name: Deploy para o Cloudflare
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
