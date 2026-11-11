@@ -102,6 +102,14 @@ export async function handleCallback(
   const url = new URL(request.url);
   const finished = await oauth.finishUpstream(request);
   const data = finished.data as { verifier: string };
+
+  // O GitHub devolve `error` quando o usuário nega ou o App recusa o pedido.
+  const githubError = url.searchParams.get('error');
+  if (githubError) {
+    const description = url.searchParams.get('error_description') ?? '';
+    return errorPage(`GitHub recusou a autorização: ${githubError} ${description}`.trim(), 400);
+  }
+
   const code = url.searchParams.get('code');
   if (!code) {
     return errorPage('GitHub não devolveu código de autorização.', 400);
@@ -114,9 +122,19 @@ export async function handleCallback(
     redirectUri: callbackUrl(env),
   });
   if (!exchanged.accessToken) {
-    return errorPage('Troca de código com o GitHub falhou. Tente autorizar de novo.', 502);
+    return errorPage(
+      `Troca de código com o GitHub falhou (${exchanged.error ?? 'sem token'}). ` +
+        'Confira GITHUB_CLIENT_SECRET e o callback do App.',
+      502,
+    );
   }
-  const user = await getGithubUser(exchanged.accessToken);
+  const user = await getGithubUser(exchanged.accessToken).catch((error: unknown) => {
+    console.error('getGithubUser falhou', error);
+    return undefined;
+  });
+  if (!user) {
+    return errorPage('Token emitido, mas não foi possível ler seu usuário do GitHub.', 502);
+  }
   const { redirectTo } = await oauth.completeAuthorization({
     request: finished.request,
     userId: user.id,

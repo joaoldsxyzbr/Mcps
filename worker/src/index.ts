@@ -119,36 +119,57 @@ function getRouter(env: Env): Router {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    const router = getRouter(env);
-    const route = resolveRoute(url.pathname, request.method, router.mcps);
-
-    switch (route.kind) {
-      case 'authorize':
-        return handleAuthorize(request, env, router.authorizationServer.getOAuthApi(env));
-
-      case 'callback':
-        return handleCallback(request, env, router.authorizationServer.getOAuthApi(env));
-
-      case 'mcp': {
-        const entry = router.resources.find((r) => r.mcp === route.mcp);
-        if (!entry) return errorPage('MCP não registrado.', 500);
-        return entry.server.fetch(request, env, ctx);
+    try {
+      return await handleRequest(request, env, ctx);
+    } catch (error) {
+      // Erro de OAuth é culpa do fluxo, não do servidor: devolve 400 com a
+      // explicação. Sem isto o runtime responde 1101 "Worker threw exception",
+      // que não diz nada a quem está tentando conectar.
+      if (error instanceof OAuthError) {
+        console.error('oauth error', error.code, error.description);
+        return errorPage(`${error.code}: ${error.description ?? 'pedido inválido'}`, 400);
       }
-
-      case 'oauth':
-        return router.authorizationServer.fetch(request, env, ctx);
-
-      case 'health': {
-        const lines = router.mcps.map((m) => `  ${m.name}: ${m.path}`);
-        return new Response(
-          `mcps no ar. Conecte um cliente MCP nos endpoints abaixo.\n${lines.join('\n')}\n`,
-          { headers: { 'content-type': 'text/plain; charset=utf-8' } },
-        );
-      }
-
-      default:
-        return errorPage('Não encontrado.', 404);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('unhandled error', error);
+      return errorPage(`Falha inesperada: ${message}`, 500);
     }
   },
 } satisfies ExportedHandler<Env>;
+
+async function handleRequest(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const router = getRouter(env);
+  const route = resolveRoute(url.pathname, request.method, router.mcps);
+
+  switch (route.kind) {
+    case 'authorize':
+      return handleAuthorize(request, env, router.authorizationServer.getOAuthApi(env));
+
+    case 'callback':
+      return handleCallback(request, env, router.authorizationServer.getOAuthApi(env));
+
+    case 'mcp': {
+      const entry = router.resources.find((r) => r.mcp === route.mcp);
+      if (!entry) return errorPage('MCP não registrado.', 500);
+      return entry.server.fetch(request, env, ctx);
+    }
+
+    case 'oauth':
+      return router.authorizationServer.fetch(request, env, ctx);
+
+    case 'health': {
+      const lines = router.mcps.map((m) => `  ${m.name}: ${m.path}`);
+      return new Response(
+        `mcps no ar. Conecte um cliente MCP nos endpoints abaixo.\n${lines.join('\n')}\n`,
+        { headers: { 'content-type': 'text/plain; charset=utf-8' } },
+      );
+    }
+
+    default:
+      return errorPage('Não encontrado.', 404);
+  }
+}
