@@ -15,7 +15,7 @@ const PORT = 8799;
 const BASE = `http://127.0.0.1:${PORT}`;
 let server: ChildProcess | undefined;
 
-async function waitForServer(timeoutMs = 60_000) {
+async function waitForServer(timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -43,6 +43,9 @@ before(async () => {
     {
       shell: true,
       stdio: 'ignore',
+      // Grupo de processos próprio no POSIX para matar o workerd junto.
+      detached: process.platform !== 'win32',
+      env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' },
     },
   );
   await waitForServer();
@@ -50,12 +53,16 @@ before(async () => {
 
 after(() => {
   if (!server?.pid) return;
-  // No Windows `server.kill()` mata só o shell do `npx`; o workerd fica
-  // órfão segurando a porta e a próxima execução falha. taskkill /T mata a árvore.
+  // Matar só o shell deixa o workerd órfão segurando a porta, e a próxima
+  // execução falha. Mata-se a árvore/grupo inteiro.
   if (process.platform === 'win32') {
     spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
   } else {
-    server.kill();
+    try {
+      process.kill(-server.pid, 'SIGTERM');
+    } catch {
+      server.kill();
+    }
   }
 });
 
