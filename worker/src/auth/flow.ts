@@ -128,12 +128,13 @@ export async function handleCallback(
       502,
     );
   }
-  const user = await getGithubUser(exchanged.accessToken).catch((error: unknown) => {
+  let user: { id: string; login: string };
+  try {
+    user = await getGithubUser(exchanged.accessToken);
+  } catch (error) {
     console.error('getGithubUser falhou', error);
-    return undefined;
-  });
-  if (!user) {
-    return errorPage('Token emitido, mas não foi possível ler seu usuário do GitHub.', 502);
+    const reason = error instanceof Error ? error.message : String(error);
+    return errorPage(`Token emitido, mas ${reason}`, 502);
   }
   const { redirectTo } = await oauth.completeAuthorization({
     request: finished.request,

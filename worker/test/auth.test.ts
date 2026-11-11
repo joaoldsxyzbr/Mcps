@@ -106,4 +106,18 @@ test('getGithubUser chama /user com token do usuário', async () => {
   assert.equal(out.login, 'joaoldsxyzbr');
   assert.equal(calls[0].input, 'https://api.github.com/user');
   assert.equal(calls[0].init.headers.authorization, 'Bearer ghu_1');
+  // Sem User-Agent a API do GitHub responde 403.
+  assert.equal(calls[0].init.headers['user-agent'], 'mcps-github');
+  assert.equal(calls[0].init.headers['x-github-api-version'], '2022-11-28');
+});
+
+test('getGithubUser inclui status e corpo do GitHub no erro', async () => {
+  const fn = async () => new Response('{"message":"Resource not accessible by integration"}', {
+    status: 403,
+    headers: { 'content-type': 'application/json' },
+  });
+  await assert.rejects(
+    () => getGithubUser('ghu_1', fn as any),
+    (e: any) => e.message.includes('403') && e.message.includes('Resource not accessible'),
+  );
 });

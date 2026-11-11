@@ -125,9 +125,12 @@ export default {
       // Erro de OAuth é culpa do fluxo, não do servidor: devolve 400 com a
       // explicação. Sem isto o runtime responde 1101 "Worker threw exception",
       // que não diz nada a quem está tentando conectar.
-      if (error instanceof OAuthError) {
-        console.error('oauth error', error.code, error.description);
-        return errorPage(`${error.code}: ${error.description ?? 'pedido inválido'}`, 400);
+      // O provider lança duas classes diferentes: `OAuthError` (nossa) e
+      // `AuthorizationError` (dele, não exportada). Ambas têm code/description.
+      const oauth = oauthFailure(error);
+      if (oauth) {
+        console.error('oauth error', oauth.code, oauth.description);
+        return errorPage(`${oauth.code}: ${oauth.description || 'pedido inválido'}`, 400);
       }
       const message = error instanceof Error ? error.message : String(error);
       console.error('unhandled error', error);
@@ -135,6 +138,21 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+/** Reconhece os dois erros de OAuth do provider (classes distintas). */
+function oauthFailure(error: unknown): { code: string; description: string } | undefined {
+  if (error instanceof OAuthError) {
+    return { code: error.code, description: error.description };
+  }
+  const candidate = error as { name?: string; code?: unknown; description?: unknown };
+  if (candidate?.name === 'AuthorizationError' && typeof candidate.code === 'string') {
+    return {
+      code: candidate.code,
+      description: typeof candidate.description === 'string' ? candidate.description : '',
+    };
+  }
+  return undefined;
+}
 
 async function handleRequest(
   request: Request,

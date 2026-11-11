@@ -122,10 +122,21 @@ export async function refreshGithubToken(
 export async function getGithubUser(token: string, fetchFn?: typeof fetch) {
   const fetchToUse = fetchFn ?? globalThis.fetch.bind(globalThis);
   const response = await fetchToUse('https://api.github.com/user', {
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/vnd.github+json',
+      // A API do GitHub rejeita requisições sem User-Agent (403
+      // "Request forbidden by administrative rules"). O fetch do Workers
+      // não manda um por padrão.
+      'user-agent': 'mcps-github',
+      'x-github-api-version': '2022-11-28',
+    },
   });
   if (!response.ok) {
-    throw new Error(`GitHub /user falhou: HTTP ${response.status}`);
+    const detail = await response.text().catch(() => '');
+    throw new Error(
+      `GET /user respondeu HTTP ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+    );
   }
   const data: any = await response.json();
   return { id: String(data.id), login: data.login };
