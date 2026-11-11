@@ -12,13 +12,12 @@
 - **authorization server**: a parte do Worker que faz o fluxo OAuth com o
   GitHub e emite token MCP (`OAuthAuthorizationServer`).
 - **resource server**: o endpoint MCP protegido que valida token MCP antes de
-  executar ferramenta (`OAuthResourceServer`). Há um por MCP.
+  executar ferramenta (`OAuthResourceServer`).
 - **issuer**: a origem do authorization server
   (`https://mcps.contato-24f.workers.dev`). Aparece no discovery OAuth.
-- **resource**: identificador canônico de um MCP (`.../github/mcp`). É o
+- **resource**: identificador canônico do MCP (`.../github/mcp`). É o
   **audience** do token: um token só vale no resource para o qual foi emitido.
-- **audience**: o resource que o token pode acessar. Um token de `/github/mcp`
-  não vale em `/notion/mcp`.
+- **audience**: o resource que o token pode acessar (`.../github/mcp`).
 - **grant**: autorização concedida pelo usuário a um cliente para um resource,
   guardada no KV com props criptografadas.
 - **props**: dados guardados no grant (ex.: token GitHub) e entregues ao

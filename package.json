@@ -1,0 +1,16 @@
+{
+  "name": "mcps",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP do GitHub num Worker da Cloudflare, com OAuth próprio",
+  "workspaces": [
+    "worker",
+    "Github"
+  ],
+  "scripts": {
+    "check": "npm run check --workspace Github && npm run check --workspace worker",
+    "test:integration": "npm run test:integration --workspace worker",
+    "dev": "npm run dev --workspace worker",
+    "deploy": "npm run deploy --workspace worker"
+  }
+}

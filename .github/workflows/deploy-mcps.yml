@@ -1,8 +1,8 @@
-# Testes/typecheck dos dois projetos. O deploy em produção é feito pelo
-# Workers Builds (dashboard Cloudflare), que escuta pushes na main — não há
-# deploy aqui, então não precisa de CLOUDFLARE_API_TOKEN no repo.
+# Testes/typecheck do monorepo. O deploy em produção é feito pelo Workers
+# Builds (dashboard Cloudflare), que escuta pushes na main — não há deploy
+# aqui, então não precisa de CLOUDFLARE_API_TOKEN no repo.
 #
-# `npm run check` é só typecheck + testes unitários (rápido e determinístico).
+# `npm run check` roda typecheck + testes unitários dos dois projetos.
 # A integração sobe `wrangler dev` e roda num passo separado, para que uma
 # falha aponte direto para o lado certo.
 name: check-mcps
@@ -13,49 +13,30 @@ on:
     paths:
       - 'worker/**'
       - 'Github/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/deploy-mcps.yml'
   pull_request:
     paths:
       - 'worker/**'
       - 'Github/**'
+      - 'package.json'
+      - 'package-lock.json'
 
 env:
-  # Node 24 é o mesmo usado no desenvolvimento local.
   NODE_VERSION: '24'
   WRANGLER_SEND_METRICS: 'false'
 
 jobs:
-  github-mcp:
-    name: Github (domínio)
+  check:
+    name: Testes
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Github
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - run: npm install
-      - run: npm run check
-
-  worker:
-    name: Worker (auth + MCPs)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: worker
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      # O worker importa ../Github/src/mcp.ts, e os imports desse arquivo são
-      # resolvidos a partir de Github/node_modules. Sem instalar lá, o bundle
-      # e os testes não encontram @modelcontextprotocol/server nem zod.
-      - name: Dependências do domínio (importado pelo worker)
-        run: npm install
-        working-directory: Github
+      # Workspaces: um install cobre worker e Github.
       - run: npm install
       - run: npm run check
       - run: npm run test:integration
