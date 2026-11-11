@@ -50,6 +50,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      # O worker importa ../Github/src/mcp.ts, e os imports desse arquivo são
+      # resolvidos a partir de Github/node_modules. Sem instalar lá, o bundle
+      # e os testes não encontram @modelcontextprotocol/server nem zod.
+      - name: Dependências do domínio (importado pelo worker)
+        run: npm install
+        working-directory: Github
       - run: npm install
       - run: npm run check
       - run: npm run test:integration
