@@ -155,6 +155,59 @@ test('cliente registrado chega ao consentimento com PKCE', async () => {
   assert.match(html, /Permitir/);
 });
 
+test('consentimento aprovado redireciona para o GitHub sem estourar', async () => {
+  const registration = await fetch(`${BASE}/oauth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_name: 'Vibe Approve',
+      redirect_uris: ['https://vibe.mistral.ai/oauth/callback'],
+      token_endpoint_auth_method: 'none',
+    }),
+  });
+  const { client_id } = (await registration.json()) as any;
+
+  const verifier = 'b'.repeat(64);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = Buffer.from(digest).toString('base64url');
+
+  const authorize = new URL(`${BASE}/authorize`);
+  authorize.searchParams.set('response_type', 'code');
+  authorize.searchParams.set('client_id', client_id);
+  authorize.searchParams.set('redirect_uri', 'https://vibe.mistral.ai/oauth/callback');
+  authorize.searchParams.set('code_challenge', challenge);
+  authorize.searchParams.set('code_challenge_method', 'S256');
+  authorize.searchParams.set('resource', `${BASE}/github/mcp`);
+  authorize.searchParams.set('scope', 'github');
+
+  const consent = await fetch(authorize);
+  const html = await consent.text();
+  const handle = html.match(/name="handle" value="([^"]+)"/)?.[1];
+  assert.ok(handle, 'handle ausente na página de consentimento');
+  const cookie = (consent.headers.get('set-cookie') ?? '').split(';')[0];
+  assert.ok(cookie, 'cookie de binding ausente');
+
+  // O clique em "Permitir": POST com o handle e o cookie do mesmo navegador.
+  const approved = await fetch(`${BASE}/authorize`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie,
+    },
+    body: new URLSearchParams({ handle, action: 'allow' }).toString(),
+  });
+
+  assert.equal(approved.status, 302);
+  const location = approved.headers.get('location') ?? '';
+  const target = new URL(location);
+  assert.equal(target.host, 'github.com');
+  assert.equal(target.pathname, '/login/oauth/authorize');
+  assert.equal(target.searchParams.get('client_id'), 'test-client');
+  assert.equal(target.searchParams.get('redirect_uri'), `${BASE}/callback`);
+  assert.ok(target.searchParams.get('state'), 'state do upstream ausente');
+});
+
 test('metadata do resource do github aponta para o issuer', async () => {
   const response = await fetch(`${BASE}/.well-known/oauth-protected-resource/github/mcp`);
   assert.equal(response.status, 200);
